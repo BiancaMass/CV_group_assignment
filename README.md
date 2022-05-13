@@ -1,1 +1,3 @@
-# CV_group_assignment
+# CV group assignment
+
+This repo contain the code for the Computer Vision Group Project.
