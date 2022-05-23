@@ -4,25 +4,35 @@ CLEAN=True
 DATASET_FOLDER = 'dataset'
 EMOTIONS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
+acc_train = []
+loss_train = []
+acc_eval = []
+loss_eval = []
+
 import os
 from utils import *
 import torch.optim as optim
 from random import shuffle
 
+
 if __name__ == '__main__':
 
     data = ImageData(preload=True)
     print('smoting')
-    #smote_output = SMOTE_balancing(n_percent=1).compute(data)
+    smote_output = SMOTE_balancing(n_percent=1).compute(data)
     dev = 'cpu'
     model = Net().to(dev)
     print(model)
 
     megalist = []
-    for em in EMOTIONS:
-        for i in range(len(data.data_struct['train'][em])):
-            input, target = data.get('train',em,i)
-            megalist.append((input,target))
+    #for em in EMOTIONS:
+    #    for i in range(len(data.data_struct['train'][em])):
+    #        input, target = data.get('train',em,i)
+    #        megalist.append((input,target))
+
+    for i in range(len(smote_output.X_train)):
+        megalist.append(smote_output.get(i))
+
 
     shuffle(megalist)
 
@@ -34,13 +44,10 @@ if __name__ == '__main__':
 
     crit = torch.nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001)
-    ans = train_model(model,crit,optimizer,megalist,num_epochs=20)
-
-
-
-
-
-
+    ans, to_plot = train2(model,crit,optimizer,train_data, eval_data,num_epochs=25)
+    #ans = load_model('model_history/1.pt')
+    save_model(ans,'model_history/3.pt')
+    acc = eval2(ans, test_data)
 
 
 

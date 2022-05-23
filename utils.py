@@ -10,6 +10,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import time
 import copy
+import matplotlib.pyplot as plt
 
 class TestImport:
     def __init__(self):
@@ -76,6 +77,15 @@ class SMOTE_balancing:
         self.X_train = self.X_smote.reshape(len(self.X_smote), 48, 48)
         return self
 
+    def get(self,index):
+        exp_idx = self.emotions.index(self.y_smote[index])
+        target = [0,0,0,0,0,0,0]
+        target[exp_idx] = 1
+        target = torch.Tensor(target).float()
+        target = target.view(1,-1)
+        img = torch.reshape(torch.from_numpy(self.X_train[index]).float(),(1,1,48,48))
+        return (img, target)
+
 
 
 def get_device():
@@ -89,13 +99,12 @@ class Net(torch.nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
-        # kernel
         self.conv1 = torch.nn.Conv2d(1, 6, kernel_size=4)
-        # an affine operation: y = Wx + b
         self.conv2 = torch.nn.Conv2d(6,16,6)
-        self.fc1 = torch.nn.Linear(16 * 8 * 8, 120)  # 5*5 from image dimension
+        self.fc1 = torch.nn.Linear(16 * 8 * 8, 120)
         self.fc2 = torch.nn.Linear(120, 84)
         self.fc3 = torch.nn.Linear(84, 7)
+        self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
         x = F.max_pool2d(F.relu(self.conv1(x)), (2,2))
@@ -104,6 +113,7 @@ class Net(torch.nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
+        x = self.softmax(x)
         return x
 
 def train_model(model, crit, opt, train_data, eval_data,num_epochs=10):
@@ -170,9 +180,79 @@ def evaluation(model,test_data):
         test_accuracy = accuracy / len(test_data)
     print(f'test_acc={test_accuracy}')
 
+def eval2(model, test_data):
+    model.eval()
+    correct = 0
+    wrong = 0
+    for input, target in test_data:
+        output = model(input)
+        if target[0][int(output.argmax())] == 1:
+            correct += 1
+        else:
+            wrong += 1
+    return correct/(wrong+correct)
+
+def train2(model, lossfx, opt, train_data, eval_data, num_epochs=5):
+    acc_train = []
+    loss_train = []
+    acc_eval = []
+    loss_eval = []
+    start_time = time.time()
+    best_wts = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
+    for epoch in range(num_epochs):
+        correct = 0
+        wrong = 0
+        print(f'epoch {epoch+1}/{num_epochs}')
+        print()
+        for phase in ['train','eval']:
+            if phase == 'train':
+                model.train()
+            else:
+                model.eval()
+            train_loss = []
+            for input, label in train_data:
+                opt.zero_grad()
+                with torch.set_grad_enabled(phase=='train'):
+                    output = model(input)
+                    _, preds = torch.max(output, 1)
+                    loss = lossfx(output,label)
+                    train_loss.append(loss)
+                    if label[0][int(output.argmax())] == 1:
+                        correct += 1
+                    else:
+                        wrong += 1
+                    if phase == 'train':
+                        loss.backward()
+                        opt.step()
+            epoch_loss = sum(train_loss)/len(train_loss)
+            epoch_acc = correct/(correct+wrong)
+            if phase == 'train':
+                acc_train.append(float(epoch_acc))
+                loss_train.append(float(epoch_loss))
+            else:
+                acc_eval.append(float(epoch_acc))
+                loss_eval.append(float(epoch_loss))
+            print(f'{phase} loss={epoch_loss} acc={epoch_acc}')
+            if phase == 'eval' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_wts = copy.deepcopy(model.state_dict())
+    time_elapsed = time.time() - start_time
+    print(f'done in {time_elapsed}\nbest_acc={best_acc}')
+    model.load_state_dict(best_wts)
+    return (model, [acc_train, loss_train, acc_eval, loss_eval])
+
+
 def save_model(model,path=os.getcwd()+'model.pt'):
     torch.save(model, path)
 
 def load_model(path=os.getcwd()+'model.pt'):
     model = torch.load(path)
     return model
+
+def plotter(title,xdata,ydata,xlabel,ylabel):
+    plt.plot(xdata, ydata)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.savefig(title+'.png')
